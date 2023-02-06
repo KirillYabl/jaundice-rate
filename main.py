@@ -2,6 +2,7 @@ import asyncio
 import enum
 import os
 import platform
+from urllib.parse import urlsplit
 
 import aiohttp
 import anyio
@@ -9,12 +10,14 @@ import pymorphy2
 from aiohttp import ClientResponseError
 
 import adapters
+from adapters.exceptions import ArticleNotFound
 import text_tools
 
 
 class ProcessingStatus(enum.Enum):
     OK = 'OK'
     FETCH_ERROR = 'FETCH_ERROR'
+    PARSING_ERROR = 'PARSING_ERROR'
 
 
 async def fetch(session, url):
@@ -25,10 +28,18 @@ async def fetch(session, url):
 
 async def process_article(session, morph, charged_words, url, results):
     result = {'url': url, 'words': None, 'jaundice_rate': None, 'status': ProcessingStatus.FETCH_ERROR}
+
     try:
+        hostname = urlsplit(url).hostname
+        if hostname != 'inosmi.ru':
+            raise ArticleNotFound
         html = await fetch(session, url)
         result['status'] = ProcessingStatus.OK
     except ClientResponseError:
+        results.append(result)
+        return
+    except ArticleNotFound:
+        result['status'] = ProcessingStatus.PARSING_ERROR
         results.append(result)
         return
     clean_text = adapters.SANITIZERS['inosmi_ru'](html, plaintext=True)
@@ -59,7 +70,8 @@ async def main():
         'https://inosmi.ru/20230206/basketbolist-260378360.html',
         'https://inosmi.ru/20230206/-guterresh-260387030.html',
         'https://inosmi.ru/20230206/siriya-260386598.html',
-        'https://inosmi.ru/20230206/siriya-26598.html',
+        'https://inosmi.ru/20230206/siriya-26598.html',  # not exist
+        'https://mail.ru',  # wrong site
     ]
     results = []
     async with aiohttp.ClientSession() as session:
