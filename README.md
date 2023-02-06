@@ -12,13 +12,13 @@
 
 Первым шагом установите пакеты:
 
-```python3
+```
 pip install -r requirements.txt
 ```
 
 # Как запустить
 
-```python3
+```
 python main.py
 ```
 
