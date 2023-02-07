@@ -11,6 +11,7 @@ import aiohttp
 import anyio
 import async_timeout
 import pymorphy2
+import pytest
 from aiohttp import ClientResponseError
 
 import adapters
@@ -41,6 +42,8 @@ async def process_article(
     charged_words: list[str],
     url: str,
     results: list[dict[str, Any]],
+    fetch_timeout: float = 3,
+    morph_timeout: float = 3,
 ) -> None:
     result = {'url': url, 'words': None, 'jaundice_rate': None, 'status': ProcessingStatus.FETCH_ERROR.value}
 
@@ -48,10 +51,10 @@ async def process_article(
         hostname = urlsplit(url).hostname
         if hostname != 'inosmi.ru':
             raise ArticleNotFound
-        html = await fetch(session, url)
+        html = await fetch(session, url, fetch_timeout)
         clean_text = adapters.SANITIZERS['inosmi_ru'](html, plaintext=True)
         with contextmanagers.fix_execution_time_in_log(logger):
-            article_words = text_tools.split_by_words(morph, clean_text)
+            article_words = text_tools.split_by_words(morph, clean_text, morph_timeout)
     except ClientResponseError:
         results.append(result)
         return
@@ -71,8 +74,7 @@ async def process_article(
     return
 
 
-async def process_articles_bulk(urls: list[str], charged_dict_path: Path = 'data/charged_dict') -> list[dict[str, Any]]:
-    morph = pymorphy2.MorphAnalyzer()
+def get_charged_words(charged_dict_path):
     charged_words = []
     charged_words_files = os.listdir(charged_dict_path)
     for charged_words_file in charged_words_files:
@@ -81,6 +83,83 @@ async def process_articles_bulk(urls: list[str], charged_dict_path: Path = 'data
                 word = word.strip()
                 if word:
                     charged_words.append(word)
+    return charged_words
+
+
+@pytest.fixture
+def event_loop():
+    """Create an instance of the default event loop for each test case."""
+    # from https://github.com/pytest-dev/pytest-asyncio/issues/371
+    policy = asyncio.WindowsSelectorEventLoopPolicy()
+    res = policy.new_event_loop()
+    asyncio.set_event_loop(res)
+    res._close = res.close
+    res.close = lambda: None
+
+    yield res
+
+    res._close()
+
+
+@pytest.mark.asyncio
+async def test_process_article():
+    morph = pymorphy2.MorphAnalyzer()
+    charged_words = get_charged_words('data/charged_dict')
+    async with aiohttp.ClientSession() as session:
+        # ok
+        results = []
+        url = 'https://inosmi.ru/20230206/ssha-260376601.html'
+        await process_article(session, morph, charged_words, url, results)
+        result = results[0]
+        assert result['url'] == url
+        assert result['jaundice_rate'] >= 0
+        assert result['jaundice_rate'] <= 100
+        assert result['status'] == ProcessingStatus.OK.value
+
+        # page not exist
+        results = []
+        url = 'https://inosmi.ru/20230206/siriya-26598.html'
+        await process_article(session, morph, charged_words, url, results)
+        result = results[0]
+        assert result['url'] == url
+        assert result['jaundice_rate'] is None
+        assert result['words'] is None
+        assert result['status'] == ProcessingStatus.FETCH_ERROR.value
+
+        # article not found
+        results = []
+        url = 'https://mail.ru'
+        await process_article(session, morph, charged_words, url, results)
+        result = results[0]
+        assert result['url'] == url
+        assert result['jaundice_rate'] is None
+        assert result['words'] is None
+        assert result['status'] == ProcessingStatus.PARSING_ERROR.value
+
+        # request timeout
+        results = []
+        url = 'https://inosmi.ru/20230206/siriya-260386598.html'
+        await process_article(session, morph, charged_words, url, results, fetch_timeout=0.001)
+        result = results[0]
+        assert result['url'] == url
+        assert result['jaundice_rate'] is None
+        assert result['words'] is None
+        assert result['status'] == ProcessingStatus.TIMEOUT.value
+
+        # morph timeout
+        results = []
+        url = 'https://inosmi.ru/20230206/siriya-260386598.html'
+        await process_article(session, morph, charged_words, url, results, morph_timeout=0.001)
+        result = results[0]
+        assert result['url'] == url
+        assert result['jaundice_rate'] is None
+        assert result['words'] is None
+        assert result['status'] == ProcessingStatus.TIMEOUT.value
+
+
+async def process_articles_bulk(urls: list[str], charged_dict_path: Path = 'data/charged_dict') -> list[dict[str, Any]]:
+    morph = pymorphy2.MorphAnalyzer()
+    charged_words = get_charged_words(charged_dict_path)
     results = []
     async with aiohttp.ClientSession() as session:
         async with anyio.create_task_group() as tg:
