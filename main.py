@@ -1,5 +1,6 @@
 import asyncio
 import enum
+import logging
 import os
 import platform
 from urllib.parse import urlsplit
@@ -13,6 +14,10 @@ from aiohttp import ClientResponseError
 import adapters
 from adapters.exceptions import ArticleNotFound
 import text_tools
+import contextmanagers
+
+
+logger = logging.getLogger(__name__)
 
 
 class ProcessingStatus(enum.Enum):
@@ -37,7 +42,6 @@ async def process_article(session, morph, charged_words, url, results):
         if hostname != 'inosmi.ru':
             raise ArticleNotFound
         html = await fetch(session, url)
-        result['status'] = ProcessingStatus.OK
     except ClientResponseError:
         results.append(result)
         return
@@ -50,10 +54,12 @@ async def process_article(session, morph, charged_words, url, results):
         results.append(result)
         return
     clean_text = adapters.SANITIZERS['inosmi_ru'](html, plaintext=True)
-    article_words = text_tools.split_by_words(morph, clean_text)
+    with contextmanagers.fix_execution_time_in_log(logger):
+        article_words = text_tools.split_by_words(morph, clean_text)
     result['words'] = len(article_words)
     jaundice_rate = text_tools.calculate_jaundice_rate(article_words, charged_words)
     result['jaundice_rate'] = jaundice_rate
+    result['status'] = ProcessingStatus.OK
     results.append(result)
     return
 
@@ -88,9 +94,9 @@ async def main():
     for result in results:
         print(result)
 
-
-if platform.system() == 'Windows':
-    # without this it will always RuntimeError in the end of function
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-asyncio.run(main())
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+    if platform.system() == 'Windows':
+        # without this it will always RuntimeError in the end of function
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    asyncio.run(main())
