@@ -3,6 +3,7 @@ import enum
 import logging
 import os
 import platform
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -16,7 +17,6 @@ import adapters
 from adapters.exceptions import ArticleNotFound
 import text_tools
 import contextmanagers
-
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ async def process_article(
     url: str,
     results: list[dict[str, Any]],
 ) -> None:
-    result = {'url': url, 'words': None, 'jaundice_rate': None, 'status': ProcessingStatus.FETCH_ERROR}
+    result = {'url': url, 'words': None, 'jaundice_rate': None, 'status': ProcessingStatus.FETCH_ERROR.value}
 
     try:
         hostname = urlsplit(url).hostname
@@ -56,25 +56,24 @@ async def process_article(
         results.append(result)
         return
     except ArticleNotFound:
-        result['status'] = ProcessingStatus.PARSING_ERROR
+        result['status'] = ProcessingStatus.PARSING_ERROR.value
         results.append(result)
         return
     except (asyncio.TimeoutError, TimeoutError):
-        result['status'] = ProcessingStatus.TIMEOUT
+        result['status'] = ProcessingStatus.TIMEOUT.value
         results.append(result)
         return
     result['words'] = len(article_words)
     jaundice_rate = text_tools.calculate_jaundice_rate(article_words, charged_words)
     result['jaundice_rate'] = jaundice_rate
-    result['status'] = ProcessingStatus.OK
+    result['status'] = ProcessingStatus.OK.value
     results.append(result)
     return
 
 
-async def main() -> None:
+async def process_articles_bulk(urls: list[str], charged_dict_path: Path = 'data/charged_dict') -> list[dict[str, Any]]:
     morph = pymorphy2.MorphAnalyzer()
     charged_words = []
-    charged_dict_path = 'data/charged_dict'
     charged_words_files = os.listdir(charged_dict_path)
     for charged_words_file in charged_words_files:
         with open(os.path.join(charged_dict_path, charged_words_file), encoding='UTF8') as f:
@@ -82,6 +81,18 @@ async def main() -> None:
                 word = word.strip()
                 if word:
                     charged_words.append(word)
+    results = []
+    async with aiohttp.ClientSession() as session:
+        async with anyio.create_task_group() as tg:
+            for url in urls:
+                tg.start_soon(process_article, session, morph, charged_words, url, results)
+
+    return results
+
+
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.INFO)
+
     urls = [
         'https://inosmi.ru/20230206/ssha-260376601.html',
         'https://inosmi.ru/20230206/sholts-260387982.html',
@@ -93,17 +104,8 @@ async def main() -> None:
         'https://inosmi.ru/20230206/siriya-26598.html',  # not exist
         'https://mail.ru',  # wrong site
     ]
-    results = []
-    async with aiohttp.ClientSession() as session:
-        async with anyio.create_task_group() as tg:
-            for url in urls:
-                tg.start_soon(process_article, session, morph, charged_words, url, results)
-    for result in results:
-        print(result)
 
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.INFO)
     if platform.system() == 'Windows':
         # without this it will always RuntimeError in the end of function
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    asyncio.run(main())
+    asyncio.run(process_articles_bulk(urls))
