@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 
 import aiohttp
 import anyio
+import async_timeout
 import pymorphy2
 from aiohttp import ClientResponseError
 
@@ -18,12 +19,14 @@ class ProcessingStatus(enum.Enum):
     OK = 'OK'
     FETCH_ERROR = 'FETCH_ERROR'
     PARSING_ERROR = 'PARSING_ERROR'
+    TIMEOUT = 'TIMEOUT'
 
 
-async def fetch(session, url):
-    async with session.get(url) as response:
-        response.raise_for_status()
-        return await response.text()
+async def fetch(session, url, timeout=3):
+    async with async_timeout.timeout(timeout):
+        async with session.get(url) as response:
+            response.raise_for_status()
+            return await response.text()
 
 
 async def process_article(session, morph, charged_words, url, results):
@@ -40,6 +43,10 @@ async def process_article(session, morph, charged_words, url, results):
         return
     except ArticleNotFound:
         result['status'] = ProcessingStatus.PARSING_ERROR
+        results.append(result)
+        return
+    except asyncio.TimeoutError:
+        result['status'] = ProcessingStatus.TIMEOUT
         results.append(result)
         return
     clean_text = adapters.SANITIZERS['inosmi_ru'](html, plaintext=True)
