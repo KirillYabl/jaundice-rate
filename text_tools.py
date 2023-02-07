@@ -1,5 +1,9 @@
+import time
+
 import pymorphy2
 import string
+
+import pytest
 
 
 def _clean_word(word):
@@ -9,10 +13,14 @@ def _clean_word(word):
     return word
 
 
-def split_by_words(morph, text):
+def split_by_words(morph, text, timeout=3.0):
     """Учитывает знаки пунктуации, регистр и словоформы, выкидывает предлоги."""
     words = []
+    stime = time.monotonic()
     for word in text.split():
+        execution_time = time.monotonic() - stime
+        if execution_time > timeout:
+            raise TimeoutError
         cleaned_word = _clean_word(word)
         normalized_word = morph.parse(cleaned_word)[0].normal_form
         if len(normalized_word) > 2 or normalized_word == 'не':
@@ -28,6 +36,11 @@ def test_split_by_words():
     assert split_by_words(morph, 'Во-первых, он хочет, чтобы') == ['во-первых', 'хотеть', 'чтобы']
 
     assert split_by_words(morph, '«Удивительно, но это стало началом!»') == ['удивительно', 'это', 'стать', 'начало']
+
+    with pytest.raises(TimeoutError):
+        text = 'Во-первых, он хочет, чтобы, «Удивительно, но это стало началом!»'
+        text *= 10_000
+        split_by_words(morph, text)
 
 
 def calculate_jaundice_rate(article_words, charged_words):

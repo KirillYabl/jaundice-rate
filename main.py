@@ -42,6 +42,9 @@ async def process_article(session, morph, charged_words, url, results):
         if hostname != 'inosmi.ru':
             raise ArticleNotFound
         html = await fetch(session, url)
+        clean_text = adapters.SANITIZERS['inosmi_ru'](html, plaintext=True)
+        with contextmanagers.fix_execution_time_in_log(logger):
+            article_words = text_tools.split_by_words(morph, clean_text)
     except ClientResponseError:
         results.append(result)
         return
@@ -49,13 +52,10 @@ async def process_article(session, morph, charged_words, url, results):
         result['status'] = ProcessingStatus.PARSING_ERROR
         results.append(result)
         return
-    except asyncio.TimeoutError:
+    except (asyncio.TimeoutError, TimeoutError):
         result['status'] = ProcessingStatus.TIMEOUT
         results.append(result)
         return
-    clean_text = adapters.SANITIZERS['inosmi_ru'](html, plaintext=True)
-    with contextmanagers.fix_execution_time_in_log(logger):
-        article_words = text_tools.split_by_words(morph, clean_text)
     result['words'] = len(article_words)
     jaundice_rate = text_tools.calculate_jaundice_rate(article_words, charged_words)
     result['jaundice_rate'] = jaundice_rate
