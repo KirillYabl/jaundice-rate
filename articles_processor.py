@@ -76,7 +76,15 @@ async def process_article(
 
 def get_charged_words(charged_dict_path):
     charged_words = []
-    charged_words_files = os.listdir(charged_dict_path)
+
+    try:
+        charged_words_files = os.listdir(charged_dict_path)
+    except FileNotFoundError:
+        return charged_words
+
+    if not charged_words_files:
+        return charged_words
+
     for charged_words_file in charged_words_files:
         with open(os.path.join(charged_dict_path, charged_words_file), encoding='UTF8') as f:
             for word in f:
