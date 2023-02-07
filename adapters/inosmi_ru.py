@@ -6,7 +6,7 @@ from .exceptions import ArticleNotFound
 from .html_tools import remove_buzz_attrs, remove_buzz_tags, remove_all_tags
 
 
-def sanitize(html, plaintext=False):
+def sanitize(html: str, plaintext: bool = False) -> str:
     soup = BeautifulSoup(html, 'html.parser')
     article = soup.select_one("div.layout-article")
 
@@ -38,7 +38,7 @@ def sanitize(html, plaintext=False):
     return text.strip()
 
 
-def test_sanitize():
+def test_sanitize() -> None:
     resp = requests.get('https://inosmi.ru/economic/20190629/245384784.html')
     resp.raise_for_status()
     clean_text = sanitize(resp.text)
@@ -61,7 +61,7 @@ def test_sanitize():
     assert '<h1>' not in clean_plaintext
 
 
-def test_sanitize_wrong_url():
+def test_sanitize_wrong_url() -> None:
     resp = requests.get('http://example.com')
     resp.raise_for_status()
     with pytest.raises(ArticleNotFound):

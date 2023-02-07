@@ -3,6 +3,7 @@ import enum
 import logging
 import os
 import platform
+from typing import Any
 from urllib.parse import urlsplit
 
 import aiohttp
@@ -27,14 +28,20 @@ class ProcessingStatus(enum.Enum):
     TIMEOUT = 'TIMEOUT'
 
 
-async def fetch(session, url, timeout=3):
+async def fetch(session: aiohttp.ClientSession, url: str, timeout: float = 3) -> str:
     async with async_timeout.timeout(timeout):
         async with session.get(url) as response:
             response.raise_for_status()
             return await response.text()
 
 
-async def process_article(session, morph, charged_words, url, results):
+async def process_article(
+    session: aiohttp.ClientSession,
+    morph: pymorphy2.MorphAnalyzer,
+    charged_words: list[str],
+    url: str,
+    results: list[dict[str, Any]],
+) -> None:
     result = {'url': url, 'words': None, 'jaundice_rate': None, 'status': ProcessingStatus.FETCH_ERROR}
 
     try:
@@ -64,7 +71,7 @@ async def process_article(session, morph, charged_words, url, results):
     return
 
 
-async def main():
+async def main() -> None:
     morph = pymorphy2.MorphAnalyzer()
     charged_words = []
     charged_dict_path = 'data/charged_dict'
