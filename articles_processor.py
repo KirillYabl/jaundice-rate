@@ -83,8 +83,8 @@ def get_charged_words(charged_dict_path):
         return charged_words
 
     for charged_words_file in charged_words_files:
-        with open(os.path.join(charged_dict_path, charged_words_file), encoding='UTF8') as f:
-            for word in f:
+        with open(os.path.join(charged_dict_path, charged_words_file), encoding='UTF8') as words_file:
+            for word in words_file:
                 word = word.strip()
                 if word:
                     charged_words.append(word)
