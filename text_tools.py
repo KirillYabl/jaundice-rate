@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 import pymorphy2
@@ -13,7 +14,22 @@ def _clean_word(word: str) -> str:
     return word
 
 
-def split_by_words(morph: pymorphy2.MorphAnalyzer, text: str, timeout: float = 3) -> list[str]:
+@pytest.fixture
+def event_loop():
+    """Create an instance of the default event loop for each test case."""
+    # from https://github.com/pytest-dev/pytest-asyncio/issues/371
+    policy = asyncio.WindowsSelectorEventLoopPolicy()
+    res = policy.new_event_loop()
+    asyncio.set_event_loop(res)
+    res._close = res.close
+    res.close = lambda: None
+
+    yield res
+
+    res._close()
+
+
+async def split_by_words(morph: pymorphy2.MorphAnalyzer, text: str, timeout: float = 3) -> list[str]:
     """Учитывает знаки пунктуации, регистр и словоформы, выкидывает предлоги."""
     words = []
     stime = time.monotonic()
@@ -25,22 +41,25 @@ def split_by_words(morph: pymorphy2.MorphAnalyzer, text: str, timeout: float = 3
         normalized_word = morph.parse(cleaned_word)[0].normal_form
         if len(normalized_word) > 2 or normalized_word == 'не':
             words.append(normalized_word)
+        await asyncio.sleep(0)
     return words
 
-
-def test_split_by_words() -> None:
+@pytest.mark.asyncio
+async def test_split_by_words() -> None:
     # Экземпляры MorphAnalyzer занимают 10-15Мб RAM т.к. загружают в память много данных
     # Старайтесь организовать свой код так, чтоб создавать экземпляр MorphAnalyzer заранее и в единственном числе
     morph = pymorphy2.MorphAnalyzer()
 
-    assert split_by_words(morph, 'Во-первых, он хочет, чтобы') == ['во-первых', 'хотеть', 'чтобы']
+    result = await split_by_words(morph, 'Во-первых, он хочет, чтобы')
+    assert result == ['во-первых', 'хотеть', 'чтобы']
 
-    assert split_by_words(morph, '«Удивительно, но это стало началом!»') == ['удивительно', 'это', 'стать', 'начало']
+    result = await split_by_words(morph, '«Удивительно, но это стало началом!»')
+    assert result == ['удивительно', 'это', 'стать', 'начало']
 
     with pytest.raises(TimeoutError):
         text = 'Во-первых, он хочет, чтобы, «Удивительно, но это стало началом!»'
         text *= 10_000
-        split_by_words(morph, text)
+        result = await split_by_words(morph, text)
 
 
 def calculate_jaundice_rate(article_words: list[str], charged_words: list[str]) -> float:

@@ -54,7 +54,7 @@ async def process_article(
         html = await fetch(session, url, fetch_timeout)
         clean_text = adapters.SANITIZERS['inosmi_ru'](html, plaintext=True)
         with contextmanagers.fix_execution_time_in_log(logger):
-            article_words = text_tools.split_by_words(morph, clean_text, morph_timeout)
+            article_words = await text_tools.split_by_words(morph, clean_text, morph_timeout)
     except ClientResponseError:
         results.append(result)
         return
