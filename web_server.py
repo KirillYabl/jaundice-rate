@@ -1,6 +1,9 @@
+import pymorphy2
 from aiohttp import web
 
 import articles_processor
+
+morph = pymorphy2.MorphAnalyzer()
 
 
 async def process_articles(request: web.Request):
@@ -8,7 +11,7 @@ async def process_articles(request: web.Request):
     urls = request.rel_url.query.get('urls', '').split(',')
     if len(urls) > max_urls_in_query:
         return web.json_response({"error": "too many urls in request, should be 10 or less"}, status=400)
-    results = await articles_processor.process_articles_bulk(urls)
+    results = await articles_processor.process_articles_bulk(morph, urls)
     return web.json_response({'urls': results})
 
 

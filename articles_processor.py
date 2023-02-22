@@ -165,9 +165,11 @@ async def test_process_article():
         assert result['status'] == ProcessingStatus.TIMEOUT.value
 
 
-async def process_articles_bulk(urls: list[str], charged_dict_path: Path = 'data/charged_dict') -> list[dict[str, Any]]:
-    morph = pymorphy2.MorphAnalyzer()
-
+async def process_articles_bulk(
+    morph: pymorphy2.MorphAnalyzer,
+    urls: list[str],
+    charged_dict_path: Path = 'data/charged_dict'
+) -> list[dict[str, Any]]:
     try:
         charged_words = get_charged_words(charged_dict_path)
     except FileNotFoundError:
@@ -185,6 +187,8 @@ async def process_articles_bulk(urls: list[str], charged_dict_path: Path = 'data
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
 
+    morph = pymorphy2.MorphAnalyzer()
+
     urls = [
         'https://inosmi.ru/20230206/ssha-260376601.html',
         'https://inosmi.ru/20230206/sholts-260387982.html',
@@ -200,4 +204,4 @@ if __name__ == '__main__':
     if platform.system() == 'Windows':
         # without this it will always RuntimeError in the end of function
         asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-    asyncio.run(process_articles_bulk(urls))
+    asyncio.run(process_articles_bulk(morph, urls))
