@@ -77,10 +77,7 @@ async def process_article(
 def get_charged_words(charged_dict_path):
     charged_words = []
 
-    try:
-        charged_words_files = os.listdir(charged_dict_path)
-    except FileNotFoundError:
-        return charged_words
+    charged_words_files = os.listdir(charged_dict_path)
 
     if not charged_words_files:
         return charged_words
@@ -112,7 +109,10 @@ def event_loop():
 @pytest.mark.asyncio
 async def test_process_article():
     morph = pymorphy2.MorphAnalyzer()
-    charged_words = get_charged_words('data/charged_dict')
+    try:
+        charged_words = get_charged_words('data/charged_dict')
+    except FileNotFoundError:
+        charged_words = []
     async with aiohttp.ClientSession() as session:
         # ok
         results = []
@@ -167,7 +167,12 @@ async def test_process_article():
 
 async def process_articles_bulk(urls: list[str], charged_dict_path: Path = 'data/charged_dict') -> list[dict[str, Any]]:
     morph = pymorphy2.MorphAnalyzer()
-    charged_words = get_charged_words(charged_dict_path)
+
+    try:
+        charged_words = get_charged_words(charged_dict_path)
+    except FileNotFoundError:
+        charged_words = []
+
     results = []
     async with aiohttp.ClientSession() as session:
         async with anyio.create_task_group() as tg:
